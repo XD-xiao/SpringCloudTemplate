@@ -1,0 +1,11 @@
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\config\MvcConfig.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\config\MyBatisConfig.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\utils\UserContext.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\domain\PageBean.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\domain\User.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\exception\CommonException.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\exception\UnauthorizedException.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\domain\Result.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\config\JsonConfig.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\exception\BusinessException.java
+G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\common\src\main\java\com\example\common\interceptors\UserInfoInterceptor.java

@@ -1,0 +1,124 @@
+spring:
+  application:
+    name: user-service
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.10.114:8848
+        username: nacos
+        password: nacos2026
+      openfeign:
+        circuitbreaker:
+          enabled: true
+  datasource:
+    url: jdbc:postgresql://192.168.10.114:5432/staticworld_user_system_db
+    username: root
+    password: piroot2026
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: 192.168.10.114
+      port: 6379
+      password: piredis2026
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2822334610@qq.com
+    password: qozaslhrotgudegb  # 每个服务独立配置
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+mybatis-plus:
+  configuration:
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+server:
+  port: 8081
+
+logging:
+  level:
+    com.example.user: debug
+
+# ==================== 业务自定义配置 ====================
+
+# JWT 令牌配置
+jwt:
+  # JWT 签名密钥（HS256 要求至少 32 字节）
+  secret: change-me-to-a-32-bytes-secret-key-!!
+
+# 用户系统业务配置
+user-system:
+  # 应用标识，用于区分不同业务系统
+  app-key: UserSystem
+
+  # 验证码相关配置
+  verify-code:
+    # 验证码在 Redis 中的 key 前缀
+    redis-prefix: "verify:code:"
+    # 验证码有效期（秒）
+    ttl-seconds: 50
+    # 注册场景使用的验证码类型标识
+    register-type: register
+    login-type: login
+  # 授权码相关配置
+  auth-code:
+    # 授权码在 Redis 中的 key 前缀
+    redis-prefix: "auth:code:"
+    # 授权码有效期（秒）
+    ttl-seconds: 50
+    # 授权码随机 TTL 抖动上限（秒），设为 0 使有效期精确等于 ttl-seconds
+    ttl-jitter-seconds: 0
+    # 生成授权码场景使用的类型标识
+    authorize-type: authorize
+
+  # 账号信息缓存配置
+  account-cache:
+    # 主账号信息缓存 key 前缀
+    master-prefix: "account:master:"
+    # 马甲账号信息缓存 key 前缀
+    sub-prefix: "account:sub:"
+    # 缓存基础有效期（秒）
+    ttl-seconds: 300
+    # 缓存随机 TTL 抖动上限（秒），实际 TTL = ttl-seconds + [0, ttl-jitter-seconds]
+    ttl-jitter-seconds: 120
+    # 缓存空值的有效期（秒），用于防止缓存穿透
+    empty-ttl-seconds: 60
+    # 缓存空值占位符
+    empty-value: "__EMPTY__"
+
+  # 角色缓存配置
+  roles-cache:
+    redis-prefix: "auth:roles:"
+    ttl-seconds: 3600
+
+  # 权限点缓存配置
+  permissions-cache:
+    redis-prefix: "auth:permission:"
+    ttl-seconds: 3600
+
+  # 登录令牌相关配置
+  token:
+    # 登录令牌在 Redis 中的 key 前缀
+    key-prefix: "login:RefreshToken:"
+    # 访问令牌（Access Token）有效期（分钟）
+    access-ttl-minutes: 1
+    # 刷新令牌（Refresh Token）有效期（天）
+    refresh-ttl-days: 15
+    # 刷新令牌存放的 Cookie 名称
+    refresh-cookie-name: RefreshToken
+

@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.10.114:8848
+        username: nacos
+        password: nacos2026
+    gateway:
+      routes:
+        - id: UserSystem
+          uri: lb://user-service
+          predicates:
+            - Path=/api/userservice/**
+
+sw:
+  auth:
+    excludePaths:
+      - /api/userservice/public/**
+    # 系统-路径前缀映射，用于校验 token 的 app_key 与路由匹配
+    app-route-mapping:
+      UserSystem: /api/userservice/**
+
+# JWT 签名密钥（与 user-service 的 jwt.secret 保持一致）
+jwt:
+  secret: change-me-to-a-32-bytes-secret-key-!!

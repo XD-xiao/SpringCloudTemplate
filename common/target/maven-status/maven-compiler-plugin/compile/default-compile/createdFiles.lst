@@ -1,0 +1,11 @@
+com\example\common\config\MyBatisConfig.class
+com\example\common\exception\BusinessException.class
+com\example\common\exception\UnauthorizedException.class
+com\example\common\interceptors\UserInfoInterceptor.class
+com\example\common\utils\UserContext.class
+com\example\common\config\JsonConfig.class
+com\example\common\domain\Result.class
+com\example\common\config\MvcConfig.class
+com\example\common\domain\PageBean.class
+com\example\common\domain\User.class
+com\example\common\exception\CommonException.class
