@@ -1,0 +1,162 @@
+package com.example.user.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.common.domain.Entity.UserSystem.SysRole;
+import com.example.common.domain.Entity.UserSystem.SysRolePermission;
+import com.example.common.domain.Entity.UserSystem.SysUserRole;
+import com.example.common.domain.PageBean;
+import com.example.user.cache.UserAuthorityCache;
+import com.example.user.mapper.SysRoleMapper;
+import com.example.user.mapper.SysRolePermissionMapper;
+import com.example.user.mapper.SysUserRoleMapper;
+import com.example.user.service.RoleService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * {@link RoleService} 实现。
+ *
+ * <p>角色、用户-角色、角色-权限三类数据的维护均在此实现；
+ * 授权关系或角色本身变更后，会失效相关用户的权限缓存。</p>
+ */
+@Service
+@RequiredArgsConstructor
+public class RoleServiceImpl implements RoleService {
+
+    private final SysRoleMapper roleMapper;
+    private final SysUserRoleMapper userRoleMapper;
+    private final SysRolePermissionMapper rolePermissionMapper;
+    private final UserAuthorityCache authorityCache;
+
+    @Override
+    public List<Long> getRoleIdsByUserId(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return userRoleMapper.selectList(
+                        new LambdaQueryWrapper<SysUserRole>()
+                                .eq(SysUserRole::getUserId, userId)
+                                .select(SysUserRole::getRoleId))
+                .stream()
+                .map(SysUserRole::getRoleId)
+                .toList();
+    }
+
+    @Override
+    public PageBean<SysRole> getRolePage(long page, long size, String keyword) {
+        Page<SysRole> result = roleMapper.selectPage(new Page<>(page, size), buildQuery(keyword));
+        return new PageBean<>(result.getTotal(), result.getRecords());
+    }
+
+    @Override
+    public List<SysRole> getRoleList() {
+        return roleMapper.selectList(new LambdaQueryWrapper<SysRole>().orderByAsc(SysRole::getId));
+    }
+
+    @Override
+    public SysRole getRoleById(Long id) {
+        return roleMapper.selectById(id);
+    }
+
+    @Override
+    public SysRole getRoleByRoleKey(String roleKey) {
+        return roleMapper.selectOne(
+                new LambdaQueryWrapper<SysRole>().eq(SysRole::getRoleKey, roleKey));
+    }
+
+    @Override
+    public void addRole(SysRole role) {
+        LocalDateTime now = LocalDateTime.now();
+        role.setCreateTime(now);
+        role.setUpdateTime(now);
+        roleMapper.insert(role);
+    }
+
+    @Override
+    public void updateRole(SysRole role) {
+        role.setUpdateTime(LocalDateTime.now());
+        roleMapper.updateById(role);
+    }
+
+    @Override
+    public void deleteRoleById(Long id) {
+        roleMapper.deleteById(id);
+        userRoleMapper.delete(
+                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, id));
+        rolePermissionMapper.delete(
+                new LambdaQueryWrapper<SysRolePermission>().eq(SysRolePermission::getRoleId, id));
+        authorityCache.evictAll();
+    }
+
+    @Override
+    public void deleteRoleByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        roleMapper.deleteBatchIds(ids);
+        userRoleMapper.delete(
+                new LambdaQueryWrapper<SysUserRole>().in(SysUserRole::getRoleId, ids));
+        rolePermissionMapper.delete(
+                new LambdaQueryWrapper<SysRolePermission>().in(SysRolePermission::getRoleId, ids));
+        authorityCache.evictAll();
+    }
+
+    @Override
+    public List<Long> getPermissionIdsByRoleId(Long roleId) {
+        if (roleId == null) {
+            return List.of();
+        }
+        return rolePermissionMapper.selectList(
+                        new LambdaQueryWrapper<SysRolePermission>()
+                                .eq(SysRolePermission::getRoleId, roleId)
+                                .select(SysRolePermission::getPermId))
+                .stream()
+                .map(SysRolePermission::getPermId)
+                .toList();
+    }
+
+    @Override
+    public void updateRolePermissions(Long roleId, List<Long> permIds) {
+        rolePermissionMapper.delete(
+                new LambdaQueryWrapper<SysRolePermission>().eq(SysRolePermission::getRoleId, roleId));
+        if (permIds != null && !permIds.isEmpty()) {
+            for (Long permId : permIds) {
+                SysRolePermission relation = new SysRolePermission();
+                relation.setRoleId(roleId);
+                relation.setPermId(permId);
+                rolePermissionMapper.insert(relation);
+            }
+        }
+        authorityCache.evictAll();
+    }
+
+    @Override
+    public void updateUserRoles(Long userId, List<Long> roleIds) {
+        userRoleMapper.delete(
+                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
+        if (roleIds != null && !roleIds.isEmpty()) {
+            for (Long roleId : roleIds) {
+                SysUserRole relation = new SysUserRole();
+                relation.setUserId(userId);
+                relation.setRoleId(roleId);
+                userRoleMapper.insert(relation);
+            }
+        }
+        authorityCache.evict(userId);
+    }
+
+    private LambdaQueryWrapper<SysRole> buildQuery(String keyword) {
+        LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.like(SysRole::getRoleName, keyword)
+                    .or()
+                    .like(SysRole::getRoleKey, keyword);
+        }
+        wrapper.orderByAsc(SysRole::getId);
+        return wrapper;
+    }
+}

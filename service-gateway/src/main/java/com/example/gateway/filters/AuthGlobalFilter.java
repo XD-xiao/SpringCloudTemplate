@@ -1,17 +1,24 @@
 package com.example.gateway.filters;
 
+import com.example.common.auth.AuthHeaders;
+import com.example.common.auth.JwtUtils;
+import com.example.common.auth.UserIdentity;
+import com.example.common.auth.UserIdentityCodec;
+import com.example.common.domain.Result;
 import com.example.gateway.config.AuthProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
@@ -19,11 +26,9 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -34,11 +39,12 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final AuthProperties authProperties;
+    private final ObjectMapper objectMapper;
 
     private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
-    /** JWT 签名密钥（HS256，需与签发方一致） */
-    @Value("${jwt.secret:change-me-to-a-32-bytes-secret-key-!!}")
+    /** JWT 签名密钥（HS256，需与签发方一致；无默认值，缺失时启动失败以便尽早暴露配置问题） */
+    @Value("${jwt.secret}")
     private String jwtSecret;
 
     @Override
@@ -46,43 +52,48 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getPath().toString();
 
-        // 1. 无需拦截则直接放行
+        // 1. 无条件清除外部传入的身份头（白名单），防止绕过网关伪造身份。
+        //    放行路径同样必须清除，否则下游会误信客户端伪造的身份头。
+        ServerWebExchange sanitizedExchange = exchange.mutate()
+                .request(builder -> builder.headers(headers ->
+                        headers.keySet().removeIf(AuthHeaders::isIdentityHeader)))
+                .build();
+
+        // 2. 无需拦截则直接放行（身份头已在第 1 步清除）
         if (isExclude(path)) {
-            return chain.filter(exchange);
+            return chain.filter(sanitizedExchange);
         }
 
-        // 2. 提取 Bearer token
+        // 3. 提取 Bearer token
         String token = resolveToken(request);
         if (token == null) {
             return unauthorized(exchange);
         }
 
-        // 3. 解析并校验 token（签名 + 过期）
-        Claims claims;
+        // 4. 解析并校验 token（签名 + 过期），并统一解码为身份模型
+        UserIdentity identity;
         try {
-            claims = parseToken(token);
+            Claims claims = JwtUtils.parseToken(jwtSecret, token);
+            identity = UserIdentityCodec.fromClaims(claims);
         } catch (JwtException | IllegalArgumentException e) {
             return unauthorized(exchange);
         }
 
-        // 4. 校验 app_key 与路由匹配
-        String appKey = claims.get("app_key", String.class);
+        // 5. 校验 app_key 与路由匹配
         String expectedAppKey = matchAppKey(path);
-        if (appKey == null || expectedAppKey == null || !appKey.equals(expectedAppKey)) {
+        if (identity.appKey() == null || expectedAppKey == null
+                || !identity.appKey().equals(expectedAppKey)) {
             return unauthorized(exchange);
         }
 
-        // 5. 透传用户信息头到下游
-        ServerWebExchange mutatedExchange = exchange.mutate()
-                .request(builder -> builder
-                        .header("X-Account-Id", stringValue(claims.get("sub_account_id")))
-                        .header("X-Master-Id", stringValue(claims.get("master_account_id")))
-                        .header("X-App-Key", appKey)
-                        .header("X-Roles", rolesValue(claims.get("roles")))
-                        .header("X-Device-Id", stringValue(claims.get("device_id"))))
+        // 6. 按统一契约透传身份头到下游（在已清除身份头的基础上写入）
+        Map<String, String> identityHeaders = UserIdentityCodec.toHeaders(identity);
+        ServerWebExchange mutatedExchange = sanitizedExchange.mutate()
+                .request(builder -> builder.headers(headers ->
+                        identityHeaders.forEach(headers::set)))
                 .build();
 
-        // 6. 放行
+        // 7. 放行
         return chain.filter(mutatedExchange);
     }
 
@@ -98,15 +109,6 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         return null;
     }
 
-    private Claims parseToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        return Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-
     private String matchAppKey(String path) {
         Map<String, String> mapping = authProperties.getAppRouteMapping();
         if (mapping == null || mapping.isEmpty()) {
@@ -120,21 +122,19 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         return null;
     }
 
-    private String stringValue(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private String rolesValue(Object value) {
-        if (!(value instanceof List<?> roles)) {
-            return "";
-        }
-        return roles.stream().map(String::valueOf).collect(Collectors.joining(","));
-    }
-
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
-        return response.setComplete();
+        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        // 与下游保持一致，统一返回 Result JSON，便于前端拦截器处理
+        byte[] body;
+        try {
+            body = objectMapper.writeValueAsBytes(Result.error(401, "未认证或 token 失效"));
+        } catch (JsonProcessingException e) {
+            body = "{\"code\":401,\"message\":\"未认证或 token 失效\"}".getBytes(StandardCharsets.UTF_8);
+        }
+        DataBuffer buffer = response.bufferFactory().wrap(body);
+        return response.writeWith(Mono.just(buffer));
     }
 
     private boolean isExclude(String antPath) {

@@ -14,6 +14,6 @@
 //    Result<PageBean<User>> getUsers(
 //            @RequestParam("page") Integer page,
 //            @RequestParam("size") Integer size,
-//            @RequestParam(value = "username", required = false) String username,
+//            @RequestParam(value = "email", required = false) String email,
 //            @RequestParam(value = "remark", required = false) String remark);
 //}

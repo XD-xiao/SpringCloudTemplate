@@ -1,3 +1,4 @@
 com\example\gateway\config\AuthProperties.class
+com\example\gateway\config\CorsConfig.class
 com\example\gateway\filters\AuthGlobalFilter.class
 com\example\gateway\GatewayApplication.class

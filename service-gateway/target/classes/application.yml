@@ -4,12 +4,19 @@ server:
 spring:
   application:
     name: gateway-service
+  config:
+    import:
+      - optional:nacos:common.yaml
   cloud:
     nacos:
+      config:
+        server-addr: 192.168.10.114:8848
+        username: nacos
+        password: ${NACOS_PASSWORD}
       discovery:
         server-addr: 192.168.10.114:8848
         username: nacos
-        password: nacos2026
+        password: ${NACOS_PASSWORD}
     gateway:
       routes:
         - id: UserSystem
@@ -21,10 +28,6 @@ sw:
   auth:
     excludePaths:
       - /api/userservice/public/**
-    # 系统-路径前缀映射，用于校验 token 的 app_key 与路由匹配
+    # 系统标识（app_key）→ 路径前缀（Ant 风格）映射，用于校验 token 的 app_key 与路由匹配
     app-route-mapping:
       UserSystem: /api/userservice/**
-
-# JWT 签名密钥（与 user-service 的 jwt.secret 保持一致）
-jwt:
-  secret: change-me-to-a-32-bytes-secret-key-!!

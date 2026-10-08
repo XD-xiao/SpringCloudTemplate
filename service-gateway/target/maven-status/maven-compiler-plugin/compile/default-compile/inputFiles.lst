@@ -1,4 +1,4 @@
-G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\service-gateway\src\main\java\com\example\gateway\filters\AuthGlobalFilter.java
-G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\service-gateway\src\main\java\com\example\gateway\utils\JwtTool.java
-G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\service-gateway\src\main\java\com\example\gateway\config\AuthProperties.java
-G:\AIWorkplace\StaticWorld\StaticWorldSpringCloud\service-gateway\src\main\java\com\example\gateway\GatewayApplication.java
+G:\AIWorkplace\StaticWorld\StaticWorldService\service-gateway\src\main\java\com\example\gateway\GatewayApplication.java
+G:\AIWorkplace\StaticWorld\StaticWorldService\service-gateway\src\main\java\com\example\gateway\config\AuthProperties.java
+G:\AIWorkplace\StaticWorld\StaticWorldService\service-gateway\src\main\java\com\example\gateway\filters\AuthGlobalFilter.java
+G:\AIWorkplace\StaticWorld\StaticWorldService\service-gateway\src\main\java\com\example\gateway\config\CorsConfig.java

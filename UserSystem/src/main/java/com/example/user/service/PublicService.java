@@ -1,60 +1,41 @@
 package com.example.user.service;
 
-import com.example.common.domain.vo.UserSystem.LoginResultVO;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
+import java.math.BigDecimal;
 
 public interface PublicService {
 
+    /**
+     * 发送验证码。
+     *
+     * @param email 邮箱
+     * @param type  类型（1 注册 2 登录）
+     */
+    void getCode(String email, Integer type);
 
-    List<String> registerMaster(String idCard,String email,String code);
+    /**
+     * 注册。
+     */
+    void register(String email, String password, String code);
 
-    LoginResultVO loginMaster(
-            String idCard,
-            List<String> mnemonic,
-            String email,
-            String deviceId,
-            String browser,
-            String os,
-            String deviceTyp,
-            String userAgent,
-            String timeZone,
-            String location
+    /**
+     * 密码登录。
+     */
+    void loginByPassword(String email, String password,
+                         String fingerprint, String deviceType, String deviceCategory,
+                         String osName, String osVersion, String browserName, String browserVersion,
+                         String userAgent, String timezone, BigDecimal latitude, BigDecimal longitude);
 
-    );
+    /**
+     * 验证码登录。
+     */
+    void loginByCode(String email, String code,
+                     String fingerprint, String deviceType, String deviceCategory,
+                     String osName, String osVersion, String browserName, String browserVersion,
+                     String userAgent, String timezone, BigDecimal latitude, BigDecimal longitude);
 
-    LoginResultVO loginSubByEmail(
-            String appKey,
-            String email,
-            String code,
-            String deviceId,
-            String browser,
-            String os,
-            String deviceTyp,
-            String userAgent,
-            String timeZone,
-            String location
-    );
-
-    LoginResultVO loginSubByAuth(
-            String appKey,
-            String email,
-            String code,
-            String deviceId,
-            String browser,
-            String os,
-            String deviceTyp,
-            String userAgent,
-            String timeZone,
-            String location
-    );
-
-
-    String sendCode(String email,String appKey,String type);
-
-    LoginResultVO refreshToken(String deviceId);
-
-    void importPermissions(MultipartFile file);
+    /**
+     * 刷新令牌。
+     */
+    void refresh();
 
 }

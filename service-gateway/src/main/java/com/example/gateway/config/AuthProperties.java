@@ -12,11 +12,12 @@ import java.util.Map;
 @Component
 @ConfigurationProperties(prefix = "sw.auth")
 public class AuthProperties {
-    private List<String> includePaths;
+
+    /** 无需认证的路径白名单（Ant 风格）。 */
     private List<String> excludePaths;
+
     /**
-     * 系统-路径前缀映射，用于校验 token 的 app_key 与路由匹配。
-     * key 为系统标识（app_key），value 为路径前缀（Ant 风格）。
+     * 系统标识（app_key）→ 路径前缀（Ant 风格）映射，用于校验 token 的 app_key 与路由匹配。
      */
     private Map<String, String> appRouteMapping;
 }
