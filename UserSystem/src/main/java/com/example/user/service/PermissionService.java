@@ -21,12 +21,16 @@ public interface PermissionService {
     // ==================== 鉴权 ====================
 
     /**
-     * 按角色 ID 集合查询权限标识（perm_key）集合。
+     * 按角色 ID 查询权限标识（perm_key）集合。
      *
-     * @param roleIds 角色 ID 集合
+     * <p>未指定类型时返回全部类型并走 RBAC 缓存；指定类型时按需过滤（直接查库，
+     * 供登录/刷新取类型 1 页面 / 2 组件的权限点）。</p>
+     *
+     * @param roleId    角色 ID
+     * @param permTypes 权限类型（1 页面 / 2 组件 / 3 接口）；为空表示全部类型
      * @return perm_key 集合
      */
-    List<String> getPermKeysByRoleIds(List<Long> roleIds);
+    List<String> getPermKeysByRoleId(Long roleId, Integer... permTypes);
 
     // ==================== 权限扫描 ====================
 
@@ -45,6 +49,17 @@ public interface PermissionService {
      * @param scannedKeys 本次扫描得到的有效 perm_key 集合
      */
     void deleteMissingPermissions(Set<String> scannedKeys);
+
+    /**
+     * 解析前端权限 JSON 并同步页面 / 组件权限点到 sys_permission。
+     *
+     * <p>与 PermissionSyncRunner 同步接口权限点（perm_type = 3）相对，
+     * 本方法同步 perm_type = 1（页面）/ 2（组件）的权限点：按 perm_key 幂等新增/更新，
+     * 并清理类型为 1/2 且不在 JSON 内的失效权限点。</p>
+     *
+     * @param json permissions.json 的原始内容
+     */
+    void syncFrontendPermissions(String json);
 
     // ==================== 权限管理 ====================
 

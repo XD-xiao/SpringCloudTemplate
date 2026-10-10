@@ -1,5 +1,6 @@
 package com.example.user.permission;
 
+import com.example.user.cache.UserAuthorityCache;
 import com.example.user.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +55,7 @@ public class PermissionSyncRunner implements ApplicationRunner {
 
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
     private final PermissionService permissionService;
+    private final UserAuthorityCache authorityCache;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -64,6 +66,9 @@ public class PermissionSyncRunner implements ApplicationRunner {
      * 执行权限点扫描与同步。
      */
     public void syncPermissions() {
+        // 先清空缓存，避免同步过程中残留旧的权限点缓存，再逐步写入最新数据
+        authorityCache.evictAll();
+
         Set<String> scannedKeys = new LinkedHashSet<>();
         Map<RequestMappingInfo, HandlerMethod> handlerMethods =
                 requestMappingHandlerMapping.getHandlerMethods();

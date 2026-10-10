@@ -22,11 +22,15 @@ spring:
         server-addr: 192.168.10.114:8848
         username: nacos
         password: ${NACOS_PASSWORD}
-      openfeign:
-        circuitbreaker:
-          enabled: true
+    openfeign:
+      circuitbreaker:
+        enabled: true
   datasource:
     url: jdbc:postgresql://${db.host}:${db.port}/staticworld_usersystem_db
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
   mail:
     password: ${MAIL_PASSWORD}
     properties:
@@ -39,6 +43,24 @@ spring:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+
+jwt:
+  # 短 Token 签名密钥 jwt.secret、长 Token 签名密钥 jwt.refresh-secret 均由 Nacos common.yaml 提供，此处不重复定义。
+  # 短 Token 有效期
+  access-ttl: 8m
+  # 长 Token / 会话有效期（滑动过期）
+  refresh-ttl: 15d
+
+rustfs:
+  # S3 兼容 API 地址（后端上传使用，内部可达即可）
+  endpoint: http://192.168.10.114:9000
+  # 访问密钥 rustfs.access-key / rustfs.secret-key 由 Nacos common.yaml 提供，此处不重复定义。
+  # S3 兼容端点通常忽略 region，但 SDK 要求非空
+  region: ${RUSTFS_REGION:us-east-1}
+  # 已创建的公共读存储桶名
+  bucket: sw-usersystem
+  # 公开读访问基址（含桶名，浏览器可直接访问）
+  public-base-url: http://192.168.10.114:9000/sw-usersystem
 
 logging:
   level:

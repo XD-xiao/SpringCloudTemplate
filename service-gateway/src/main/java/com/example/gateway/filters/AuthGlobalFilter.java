@@ -81,8 +81,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
         // 5. 校验 app_key 与路由匹配
         String expectedAppKey = matchAppKey(path);
-        if (identity.appKey() == null || expectedAppKey == null
-                || !identity.appKey().equals(expectedAppKey)) {
+        if (identity.appKey() == null || !identity.appKey().equals(expectedAppKey)) {
             return unauthorized(exchange);
         }
 

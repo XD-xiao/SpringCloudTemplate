@@ -2,7 +2,6 @@ package com.example.user.security;
 
 import com.example.common.auth.UserIdentity;
 import com.example.common.auth.UserIdentityCodec;
-import com.example.user.cache.UserAuthorityCache;
 import com.example.user.service.PermissionService;
 import com.example.user.service.RoleService;
 import jakarta.servlet.FilterChain;
@@ -18,7 +17,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 用户信息认证过滤器。
@@ -33,7 +34,6 @@ public class UserInfoAuthFilter extends OncePerRequestFilter {
 
     private final RoleService roleService;
     private final PermissionService permissionService;
-    private final UserAuthorityCache authorityCache;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -54,18 +54,13 @@ public class UserInfoAuthFilter extends OncePerRequestFilter {
     /**
      * 根据用户 ID 查询权限点（perm_key）作为授权标识。
      *
-     * <p>该路径为高频访问，先读取 Redis 缓存；未命中时再通过业务接口查询
-     * 角色 ID 与权限点并回填缓存。角色/权限/授权关系变更时缓存会被主动失效。</p>
+     * <p>角色与权限点的查询（含 RBAC 缓存）由 {@link RoleService} / {@link PermissionService}
+     * 内部完成，本过滤器只负责组装 {@code Authentication}。</p>
      */
     private List<GrantedAuthority> loadAuthorities(UserIdentity identity) {
-        Long userId = identity.userId();
-        List<String> permKeys = authorityCache.get(userId);
-        if (permKeys == null) {
-            List<Long> roleIds = roleService.getRoleIdsByUserId(userId);
-            permKeys = roleIds.isEmpty()
-                    ? List.of()
-                    : permissionService.getPermKeysByRoleIds(roleIds);
-            authorityCache.put(userId, permKeys);
+        Set<String> permKeys = new LinkedHashSet<>();
+        for (Long roleId : roleService.getRoleIdsByUserId(identity.userId())) {
+            permKeys.addAll(permissionService.getPermKeysByRoleId(roleId));
         }
 
         return permKeys.stream()

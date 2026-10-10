@@ -31,7 +31,7 @@ public class SystemAdminController {
 
     // ==================== 角色管理 ====================
 
-    @PreAuthorize("hasAuthority('user:role:list')")
+    @PreAuthorize("hasAuthority('admin:role:list')")
     @PermissionName("角色列表")
     @GetMapping("/roles")
     public Result getRoleList(
@@ -44,14 +44,14 @@ public class SystemAdminController {
         return Result.success("获取角色列表成功", roleService.getRolePage(current, pageSize, keyword));
     }
 
-    @PreAuthorize("hasAuthority('user:role:permlist')")
+    @PreAuthorize("hasAuthority('admin:role:permlist')")
     @PermissionName("该角色权限列表")
     @GetMapping("/roles/permlist")
     public Result getPermListByRole(@RequestParam Long roleId) {
         return Result.success("获取权限列表成功", roleService.getPermissionIdsByRoleId(roleId));
     }
 
-    @PreAuthorize("hasAuthority('user:role:add')")
+    @PreAuthorize("hasAuthority('admin:role:add')")
     @PermissionName("新增角色")
     @PostMapping("/roles/add")
     public Result createRole(
@@ -65,7 +65,7 @@ public class SystemAdminController {
         return Result.success("新增角色成功", null);
     }
 
-    @PreAuthorize("hasAuthority('user:role:update')")
+    @PreAuthorize("hasAuthority('admin:role:update')")
     @PermissionName("修改角色")
     @PutMapping("/roles/update")
     public Result updateRole(
@@ -81,7 +81,7 @@ public class SystemAdminController {
         return Result.success("修改角色成功", null);
     }
 
-    @PreAuthorize("hasAuthority('user:role:delete')")
+    @PreAuthorize("hasAuthority('admin:role:delete')")
     @PermissionName("删除角色")
     @DeleteMapping("/roles/delete")
     public Result deleteRole(@RequestParam Long roleId) {
@@ -89,20 +89,47 @@ public class SystemAdminController {
         return Result.success("删除角色成功", null);
     }
 
-    @PreAuthorize("hasAuthority('user:role:permission')")
+    @PreAuthorize("hasAuthority('admin:role:permission')")
     @PermissionName("角色分配权限")
     @PutMapping("/roles/permission")
     public Result updateRolePermission(
             @RequestParam Long roleId,
-            @RequestParam List<Long> permissionIds
+            @RequestParam(required = false) List<Long> permissionIds
     ) {
         roleService.updateRolePermissions(roleId, permissionIds);
         return Result.success("分配权限成功", null);
     }
 
+    // ==================== 用户-角色分配 ====================
+
+    @PreAuthorize("hasAuthority('admin:role:list')")
+    @PermissionName("全部角色")
+    @GetMapping("/roles/all")
+    public Result getAllRoles() {
+        return Result.success("获取全部角色成功", roleService.getRoleList());
+    }
+
+    @PreAuthorize("hasAuthority('admin:user:role:list')")
+    @PermissionName("用户已分配角色")
+    @GetMapping("/user/roles")
+    public Result getUserRoleIds(@RequestParam Long userId) {
+        return Result.success("获取用户角色成功", roleService.getRoleIdsByUserId(userId));
+    }
+
+    @PreAuthorize("hasAuthority('admin:user:role:assign')")
+    @PermissionName("分配用户角色")
+    @PutMapping("/user/roles")
+    public Result updateUserRoles(
+            @RequestParam Long userId,
+            @RequestParam(required = false) List<Long> roleIds
+    ) {
+        roleService.updateUserRoles(userId, roleIds);
+        return Result.success("分配角色成功", null);
+    }
+
     // ==================== 权限管理 ====================
 
-    @PreAuthorize("hasAuthority('user:perm:list')")
+    @PreAuthorize("hasAuthority('admin:perm:list')")
     @PermissionName("权限列表")
     @GetMapping("/permissions")
     public Result getPermissionList(
@@ -115,7 +142,7 @@ public class SystemAdminController {
         return Result.success("获取权限列表成功", permissionService.getPermissionPage(current, pageSize, keyword));
     }
 
-    @PreAuthorize("hasAuthority('user:perm:add')")
+    @PreAuthorize("hasAuthority('admin:perm:add')")
     @PermissionName("新增权限")
     @PostMapping("/permissions/add")
     public Result createPermission(
@@ -133,7 +160,7 @@ public class SystemAdminController {
         return Result.success("新增权限成功", null);
     }
 
-    @PreAuthorize("hasAuthority('user:perm:update')")
+    @PreAuthorize("hasAuthority('admin:perm:update')")
     @PermissionName("修改权限")
     @PutMapping("/permissions/update")
     public Result updatePermission(
@@ -153,7 +180,7 @@ public class SystemAdminController {
         return Result.success("修改权限成功", null);
     }
 
-    @PreAuthorize("hasAuthority('user:perm:delete')")
+    @PreAuthorize("hasAuthority('admin:perm:delete')")
     @PermissionName("删除权限")
     @DeleteMapping("/permissions/delete")
     public Result deletePermission(@RequestParam Long id) {

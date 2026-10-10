@@ -7,34 +7,63 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
- * 用户权限标识（perm_key）缓存。
+ * RBAC 权限数据缓存（两级，无 TTL 持久存储）。
  *
- * <p>鉴权过滤器每次请求都要解析用户的权限集合，属于高频读路径。
- * 这里采用缓存旁路（Cache-Aside）模式：读取时优先命中缓存，未命中再查库并回填；
- * 角色/权限/授权关系变更时通过 {@link #evict} 或 {@link #evictAll} 主动失效，保证一致性。</p>
+ * <p>把 RBAC 五张表（用户、角色、权限、用户-角色关联、角色-权限关联）的授权结果
+ * 统一抽象为两级缓存，供鉴权过滤器高频读取：</p>
+ * <ul>
+ *     <li>用户→角色：key {@code auth:user:{userId}}，value 为角色 ID 列表；</li>
+ *     <li>角色→权限：key {@code auth:role:{roleId}}，value 为权限标识（perm_key）列表。</li>
+ * </ul>
  *
- * <p>key：{@code auth:authorities:{userId}}；value：JSON 数组，如 {@code ["user:app:list"]}。</p>
+ * <p>缓存采用 Cache-Aside 模式：读取未命中时由业务层查库并回填；
+ * 用户-角色 / 角色 / 角色-权限 / 权限任一变更时，通过 {@link #evictUser} /
+ * {@link #evictRole} / {@link #evictAll} 主动失效，保证与数据库一致。</p>
  */
 @Component
 @RequiredArgsConstructor
 public class UserAuthorityCache {
 
-    private static final String KEY_PREFIX = "auth:authorities:";
-    private static final long TTL_MINUTES = 30;
+    private static final String USER_ROLES_PREFIX = "auth:user:";
+    private static final String ROLE_PERMS_PREFIX = "auth:role:";
 
     private final StringRedisTemplate redis;
 
     /**
-     * 读取用户权限集合；缓存不存在返回 {@code null}，以区分「已缓存的空集合」。
+     * 读取用户角色 ID 列表；缓存不存在返回 {@code null}，以区分「已缓存的空集合」。
      */
-    public List<String> get(Long userId) {
+    public List<Long> getRoleIds(Long userId) {
         if (userId == null) {
             return null;
         }
-        String json = redis.opsForValue().get(key(userId));
+        String json = redis.opsForValue().get(userRolesKey(userId));
+        if (json == null) {
+            return null;
+        }
+        return JSONUtil.parseArray(json).toList(Long.class);
+    }
+
+    /**
+     * 写入用户角色 ID 列表。
+     */
+    public void putRoleIds(Long userId, List<Long> roleIds) {
+        if (userId == null) {
+            return;
+        }
+        List<Long> values = roleIds == null ? List.of() : roleIds;
+        redis.opsForValue().set(userRolesKey(userId), JSONUtil.toJsonStr(values));
+    }
+
+    /**
+     * 读取角色权限标识列表；缓存不存在返回 {@code null}，以区分「已缓存的空集合」。
+     */
+    public List<String> getPermKeys(Long roleId) {
+        if (roleId == null) {
+            return null;
+        }
+        String json = redis.opsForValue().get(rolePermsKey(roleId));
         if (json == null) {
             return null;
         }
@@ -42,33 +71,47 @@ public class UserAuthorityCache {
     }
 
     /**
-     * 写入用户权限集合。
+     * 写入角色权限标识列表。
      */
-    public void put(Long userId, List<String> authorities) {
-        if (userId == null) {
+    public void putPermKeys(Long roleId, List<String> permKeys) {
+        if (roleId == null) {
             return;
         }
-        List<String> values = authorities == null ? List.of() : authorities;
-        redis.opsForValue().set(key(userId), JSONUtil.toJsonStr(values), TTL_MINUTES, TimeUnit.MINUTES);
+        List<String> values = permKeys == null ? List.of() : permKeys;
+        redis.opsForValue().set(rolePermsKey(roleId), JSONUtil.toJsonStr(values));
     }
 
     /**
-     * 失效指定用户的权限缓存。
+     * 失效指定用户的角色缓存（用户-角色关系变更时使用）。
      */
-    public void evict(Long userId) {
+    public void evictUser(Long userId) {
         if (userId != null) {
-            redis.delete(key(userId));
+            redis.delete(userRolesKey(userId));
         }
     }
 
     /**
-     * 失效全部用户的权限缓存（角色或权限本身变更时使用）。
+     * 失效指定角色的权限缓存（角色-权限关系变更时使用）。
      */
-    public void evictAll() {
-        RefreshTokenRedisUtil.deleteByPattern(redis, KEY_PREFIX + "*");
+    public void evictRole(Long roleId) {
+        if (roleId != null) {
+            redis.delete(rolePermsKey(roleId));
+        }
     }
 
-    private String key(Long userId) {
-        return KEY_PREFIX + userId;
+    /**
+     * 失效全部 RBAC 缓存（角色/权限本身变更、权限点同步时使用）。
+     */
+    public void evictAll() {
+        RefreshTokenRedisUtil.deleteByPattern(redis, USER_ROLES_PREFIX + "*");
+        RefreshTokenRedisUtil.deleteByPattern(redis, ROLE_PERMS_PREFIX + "*");
+    }
+
+    private String userRolesKey(Long userId) {
+        return USER_ROLES_PREFIX + userId;
+    }
+
+    private String rolePermsKey(Long roleId) {
+        return ROLE_PERMS_PREFIX + roleId;
     }
 }

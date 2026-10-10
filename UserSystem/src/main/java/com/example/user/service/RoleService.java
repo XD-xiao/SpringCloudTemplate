@@ -20,9 +20,14 @@ public interface RoleService {
     // ==================== 鉴权 ====================
 
     /**
-     * 按用户 ID 查询角色 ID 集合。
+     * 按用户 ID 查询角色 ID 集合（走 RBAC 缓存，未命中查库回填）。
      */
     List<Long> getRoleIdsByUserId(Long userId);
+
+    /**
+     * 按用户 ID 查询角色标识（role_key）集合（走 RBAC 缓存，供登录/刷新签发用）。
+     */
+    List<String> getRoleKeysByUserId(Long userId);
 
     // ==================== 角色管理 ====================
 

@@ -1,25 +1,31 @@
 package com.example.user.service.impl;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.common.domain.Entity.UserSystem.SysPermission;
 import com.example.common.domain.Entity.UserSystem.SysRolePermission;
 import com.example.common.domain.PageBean;
+import com.example.common.exception.BusinessException;
 import com.example.user.cache.UserAuthorityCache;
 import com.example.user.mapper.SysPermissionMapper;
 import com.example.user.mapper.SysRolePermissionMapper;
 import com.example.user.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * {@link PermissionService} 实现。
  *
- * <p>鉴权查询（{@link #getPermKeysByRoleIds}）与权限管理均落在本实现中；
+ * <p>鉴权查询（{@link #getPermKeysByRoleId}）与权限管理均落在本实现中；
  * 权限点本身或角色-权限关系变更后，会失效用户权限缓存，保证下次鉴权读取到最新数据。</p>
  */
 @Service
@@ -34,14 +40,30 @@ public class PermissionServiceImpl implements PermissionService {
     private final UserAuthorityCache authorityCache;
 
     @Override
-    public List<String> getPermKeysByRoleIds(List<Long> roleIds) {
-        if (roleIds == null || roleIds.isEmpty()) {
+    public List<String> getPermKeysByRoleId(Long roleId, Integer... permTypes) {
+        if (roleId == null) {
             return List.of();
         }
 
+        // 未指定类型：走缓存（缓存角色全部权限点，鉴权高频）
+        if (permTypes == null || permTypes.length == 0) {
+            List<String> cached = authorityCache.getPermKeys(roleId);
+            if (cached != null) {
+                return cached;
+            }
+            List<String> keys = queryPermKeys(roleId, null);
+            authorityCache.putPermKeys(roleId, keys);
+            return keys;
+        }
+
+        // 指定类型：按需查库（登录/刷新低频，取类型 1 页面 / 2 组件）
+        return queryPermKeys(roleId, Arrays.asList(permTypes));
+    }
+
+    private List<String> queryPermKeys(Long roleId, Collection<Integer> permTypes) {
         List<Long> permIds = rolePermissionMapper.selectList(
                         new LambdaQueryWrapper<SysRolePermission>()
-                                .in(SysRolePermission::getRoleId, roleIds)
+                                .eq(SysRolePermission::getRoleId, roleId)
                                 .select(SysRolePermission::getPermId))
                 .stream()
                 .map(SysRolePermission::getPermId)
@@ -52,10 +74,14 @@ public class PermissionServiceImpl implements PermissionService {
             return List.of();
         }
 
-        return permissionMapper.selectList(
-                        new LambdaQueryWrapper<SysPermission>()
-                                .in(SysPermission::getId, permIds)
-                                .select(SysPermission::getPermKey))
+        LambdaQueryWrapper<SysPermission> wrapper = new LambdaQueryWrapper<SysPermission>()
+                .in(SysPermission::getId, permIds)
+                .select(SysPermission::getPermKey);
+        if (permTypes != null && !permTypes.isEmpty()) {
+            wrapper.in(SysPermission::getPermType, permTypes);
+        }
+
+        return permissionMapper.selectList(wrapper)
                 .stream()
                 .map(SysPermission::getPermKey)
                 .distinct()
@@ -105,6 +131,85 @@ public class PermissionServiceImpl implements PermissionService {
                 new LambdaQueryWrapper<SysRolePermission>()
                         .in(SysRolePermission::getPermId, ids));
         authorityCache.evictAll();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void syncFrontendPermissions(String json) {
+        List<SysPermission> incoming = parsePermissionJson(json);
+        Set<String> scannedKeys = new LinkedHashSet<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (SysPermission item : incoming) {
+            String key = item.getPermKey();
+            if (key == null || key.isBlank()) {
+                throw new BusinessException(400, "权限标识 permKey 不能为空");
+            }
+            Integer type = item.getPermType();
+            if (type == null || (type != 1 && type != 2)) {
+                throw new BusinessException(400, "权限类型仅支持 1 页面 / 2 组件：" + key);
+            }
+            scannedKeys.add(key);
+            upsertFrontPermission(item, now);
+        }
+
+        cleanupMissingFrontPermissions(scannedKeys);
+        authorityCache.evictAll();
+    }
+
+    private List<SysPermission> parsePermissionJson(String json) {
+        if (json == null || json.isBlank()) {
+            throw new BusinessException(400, "上传内容不能为空");
+        }
+        try {
+            return JSONUtil.toList(json, SysPermission.class);
+        } catch (Exception e) {
+            throw new BusinessException(400, "JSON 解析失败：" + e.getMessage());
+        }
+    }
+
+    private void upsertFrontPermission(SysPermission item, LocalDateTime now) {
+        String name = (item.getPermName() == null || item.getPermName().isBlank())
+                ? item.getPermKey() : item.getPermName();
+
+        SysPermission existing = getPermissionByPermKey(item.getPermKey());
+        if (existing == null) {
+            SysPermission permission = new SysPermission();
+            permission.setPermKey(item.getPermKey());
+            permission.setPermName(name);
+            permission.setPermType(item.getPermType());
+            permission.setPath(item.getPath());
+            permission.setCreateTime(now);
+            permission.setUpdateTime(now);
+            permissionMapper.insert(permission);
+        } else {
+            existing.setPermName(name);
+            existing.setPermType(item.getPermType());
+            if (item.getPath() != null) {
+                existing.setPath(item.getPath());
+            }
+            existing.setUpdateTime(now);
+            permissionMapper.updateById(existing);
+        }
+    }
+
+    private void cleanupMissingFrontPermissions(Set<String> scannedKeys) {
+        LambdaQueryWrapper<SysPermission> wrapper = new LambdaQueryWrapper<SysPermission>()
+                .in(SysPermission::getPermType, 1, 2);
+        if (scannedKeys != null && !scannedKeys.isEmpty()) {
+            wrapper.notIn(SysPermission::getPermKey, scannedKeys);
+        }
+
+        List<SysPermission> removed = permissionMapper.selectList(wrapper);
+        if (removed.isEmpty()) {
+            return;
+        }
+
+        List<Long> ids = removed.stream().map(SysPermission::getId).toList();
+        permissionMapper.deleteBatchIds(ids);
+        rolePermissionMapper.delete(
+                new LambdaQueryWrapper<SysRolePermission>()
+                        .in(SysRolePermission::getPermId, ids));
     }
 
     @Override

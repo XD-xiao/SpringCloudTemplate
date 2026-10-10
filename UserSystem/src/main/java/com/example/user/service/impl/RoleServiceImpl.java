@@ -2,11 +2,14 @@ package com.example.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.common.domain.Entity.UserSystem.SysPermission;
 import com.example.common.domain.Entity.UserSystem.SysRole;
 import com.example.common.domain.Entity.UserSystem.SysRolePermission;
 import com.example.common.domain.Entity.UserSystem.SysUserRole;
 import com.example.common.domain.PageBean;
+import com.example.common.exception.BusinessException;
 import com.example.user.cache.UserAuthorityCache;
+import com.example.user.mapper.SysPermissionMapper;
 import com.example.user.mapper.SysRoleMapper;
 import com.example.user.mapper.SysRolePermissionMapper;
 import com.example.user.mapper.SysUserRoleMapper;
@@ -30,6 +33,7 @@ public class RoleServiceImpl implements RoleService {
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final SysRolePermissionMapper rolePermissionMapper;
+    private final SysPermissionMapper permissionMapper;
     private final UserAuthorityCache authorityCache;
 
     @Override
@@ -37,12 +41,35 @@ public class RoleServiceImpl implements RoleService {
         if (userId == null) {
             return List.of();
         }
-        return userRoleMapper.selectList(
+        List<Long> roleIds = authorityCache.getRoleIds(userId);
+        if (roleIds != null) {
+            return roleIds;
+        }
+        roleIds = userRoleMapper.selectList(
                         new LambdaQueryWrapper<SysUserRole>()
                                 .eq(SysUserRole::getUserId, userId)
                                 .select(SysUserRole::getRoleId))
                 .stream()
                 .map(SysUserRole::getRoleId)
+                .distinct()
+                .toList();
+        authorityCache.putRoleIds(userId, roleIds);
+        return roleIds;
+    }
+
+    @Override
+    public List<String> getRoleKeysByUserId(Long userId) {
+        List<Long> roleIds = getRoleIdsByUserId(userId);
+        if (roleIds.isEmpty()) {
+            return List.of();
+        }
+        return roleMapper.selectList(
+                        new LambdaQueryWrapper<SysRole>()
+                                .in(SysRole::getId, roleIds)
+                                .select(SysRole::getRoleKey))
+                .stream()
+                .map(SysRole::getRoleKey)
+                .filter(roleKey -> roleKey != null && !roleKey.isBlank())
                 .toList();
     }
 
@@ -80,6 +107,7 @@ public class RoleServiceImpl implements RoleService {
     public void updateRole(SysRole role) {
         role.setUpdateTime(LocalDateTime.now());
         roleMapper.updateById(role);
+        authorityCache.evictAll();
     }
 
     @Override
@@ -121,32 +149,56 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     public void updateRolePermissions(Long roleId, List<Long> permIds) {
-        rolePermissionMapper.delete(
-                new LambdaQueryWrapper<SysRolePermission>().eq(SysRolePermission::getRoleId, roleId));
-        if (permIds != null && !permIds.isEmpty()) {
-            for (Long permId : permIds) {
-                SysRolePermission relation = new SysRolePermission();
-                relation.setRoleId(roleId);
-                relation.setPermId(permId);
-                rolePermissionMapper.insert(relation);
+        List<Long> normalizedPermIds = normalizeIds(permIds);
+        if (!normalizedPermIds.isEmpty()) {
+            Long count = permissionMapper.selectCount(
+                    new LambdaQueryWrapper<SysPermission>().in(SysPermission::getId, normalizedPermIds));
+            if (count == null || count != normalizedPermIds.size()) {
+                throw new BusinessException(400, "存在不存在的权限 ID，请刷新后重试");
             }
         }
-        authorityCache.evictAll();
+
+        rolePermissionMapper.delete(
+                new LambdaQueryWrapper<SysRolePermission>().eq(SysRolePermission::getRoleId, roleId));
+        for (Long permId : normalizedPermIds) {
+            SysRolePermission relation = new SysRolePermission();
+            relation.setRoleId(roleId);
+            relation.setPermId(permId);
+            rolePermissionMapper.insert(relation);
+        }
+        authorityCache.evictRole(roleId);
     }
 
     @Override
     public void updateUserRoles(Long userId, List<Long> roleIds) {
-        userRoleMapper.delete(
-                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
-        if (roleIds != null && !roleIds.isEmpty()) {
-            for (Long roleId : roleIds) {
-                SysUserRole relation = new SysUserRole();
-                relation.setUserId(userId);
-                relation.setRoleId(roleId);
-                userRoleMapper.insert(relation);
+        List<Long> normalizedRoleIds = normalizeIds(roleIds);
+        if (!normalizedRoleIds.isEmpty()) {
+            Long count = roleMapper.selectCount(
+                    new LambdaQueryWrapper<SysRole>().in(SysRole::getId, normalizedRoleIds));
+            if (count == null || count != normalizedRoleIds.size()) {
+                throw new BusinessException(400, "存在不存在的角色 ID，请刷新后重试");
             }
         }
-        authorityCache.evict(userId);
+
+        userRoleMapper.delete(
+                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
+        for (Long roleId : normalizedRoleIds) {
+            SysUserRole relation = new SysUserRole();
+            relation.setUserId(userId);
+            relation.setRoleId(roleId);
+            userRoleMapper.insert(relation);
+        }
+        authorityCache.evictUser(userId);
+    }
+
+    private List<Long> normalizeIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ids.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
     }
 
     private LambdaQueryWrapper<SysRole> buildQuery(String keyword) {
